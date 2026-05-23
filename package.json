@@ -1,24 +1,17 @@
 {
-  "name": "tneh-advanced-link-tracker",
-  "version": "2.0.0",
+  "name": "tneh-link-tracker",
+  "version": "1.0.0",
   "type": "module",
-  "description": "Advanced link tracker with gallery access and location tracking",
+  "description": "Telegram bot for link tracking with gallery access and location",
   "main": "api/index.js",
   "scripts": {
-    "start": "node api/index.js",
-    "dev": "nodemon api/index.js"
+    "start": "node api/index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
     "multer": "^1.4.5-lts.1",
-    "uuid": "^9.0.1",
     "node-fetch": "^3.3.2",
-    "node-telegram-bot-api": "^0.64.0"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
-  },
-  "keywords": ["telegram", "bot", "link", "tracker", "analytics", "gallery", "location"],
-  "author": "TNEH",
-  "license": "MIT"
+    "node-telegram-bot-api": "^0.64.0",
+    "uuid": "^9.0.1"
+  }
 }
