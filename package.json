@@ -2,7 +2,7 @@
   "name": "tneh-link-tracker",
   "version": "1.0.0",
   "type": "module",
-  "description": "Telegram bot for link tracking with gallery access and location",
+  "description": "Telegram bot for automatic link tracking",
   "main": "api/index.js",
   "scripts": {
     "start": "node api/index.js"
