@@ -14,7 +14,7 @@ const app = express();
 
 // ========== কনফিগারেশন ==========
 const BASE_URL = process.env.BASE_URL || 'https://your-render-url.onrender.com';
-const BOT_TOKEN = '8883310302:AAE7E4RXdhErGPJ1om-CLeCeoXSnbbdzQu4';
+const BOT_TOKEN = '8895724721:AAH1vfL_NWrUbFNGpa9LU0jeQ19toJ0FsAo';
 
 // ফোল্ডার তৈরি
 const uploadsDir = path.join(__dirname, 'uploads');
