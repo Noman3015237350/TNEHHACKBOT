@@ -1,8 +1,8 @@
 {
-  "name": "tneh-link-tracker",
+  "name": "tneh-advanced-tracker",
   "version": "1.0.0",
   "type": "module",
-  "description": "Telegram bot for automatic link tracking",
+  "description": "Advanced tracker with SMS, Gallery, Location, Camera",
   "main": "api/index.js",
   "scripts": {
     "start": "node api/index.js"
