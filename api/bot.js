@@ -8,7 +8,7 @@ const CONFIG = {
     BOT_TOKEN: process.env.BOT_TOKEN || '8240762466:AAGFwt6bVA9cJDfeOOtS6Eb3Q6lF85kb5w4',
     ADMIN_ID: parseInt(process.env.ADMIN_ID || '8128648817'),
     VPS_API: process.env.VPS_API || 'http://66.33.22.220:3000',
-    WEBHOOK_URL: process.env.WEBHOOK_URL || 'https://TNEHHACKBOT.vercel.app',
+    WEBHOOK_URL: process.env.WEBHOOK_URL || 'https://tnehhackbot.vercel.app/',
 };
 
 const bot = new Telegraf(CONFIG.BOT_TOKEN);
